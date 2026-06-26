@@ -262,7 +262,7 @@ namespace LabLock
 
         private void DoRestore()
         {
-            if (protector.RestoreLayout(true))
+            if (protector.RestoreLayout(true, true))
             {
                 SetStatus("Layout restaurado com sucesso!", false);
                 RefreshLastSaveTime();
@@ -760,7 +760,7 @@ namespace LabLock
             }
         }
 
-        public bool RestoreLayout(bool showFeedback)
+        public bool RestoreLayout(bool showFeedback, bool doBackup = false)
         {
             try
             {
@@ -784,7 +784,8 @@ namespace LabLock
                 }
 
                 NotifyDesktopRefresh();
-                BackupNewDesktopItems();
+                if (doBackup)
+                    BackupNewDesktopItems();
                 RestorePositionsToListView();
 
                 return true;
@@ -804,8 +805,8 @@ namespace LabLock
             using (var key = Registry.CurrentUser.OpenSubKey(RegSavedLayout))
             {
                 if (key == null) return;
-                string[] valueNames = key.GetValueNames();
-                foreach (string vn in valueNames)
+                string[] vns = key.GetValueNames();
+                foreach (string vn in vns)
                 {
                     if (!vn.StartsWith("Icon_")) continue;
                     string val = key.GetValue(vn, "") as string;
@@ -826,10 +827,16 @@ namespace LabLock
 
             foreach (string f in Directory.GetFiles(desktop))
             {
-                string name = Path.GetFileName(f);
-                string nameNoExt = Path.GetFileNameWithoutExtension(f);
-                if (savedNames.Contains(name) || savedNames.Contains(nameNoExt))
+                FileAttributes attr = File.GetAttributes(f);
+                if ((attr & (FileAttributes.Hidden | FileAttributes.System)) != 0)
                     continue;
+
+                string name = Path.GetFileName(f);
+                string match = Path.GetFileNameWithoutExtension(f);
+
+                if (savedNames.Contains(name) || savedNames.Contains(match))
+                    continue;
+
                 try
                 {
                     string dest = Path.Combine(backup, name);
@@ -842,8 +849,11 @@ namespace LabLock
             foreach (string d in Directory.GetDirectories(desktop))
             {
                 string name = Path.GetFileName(d);
+                if ((File.GetAttributes(d) & FileAttributes.Hidden) != 0)
+                    continue;
                 if (name == "backup" || savedNames.Contains(name))
                     continue;
+
                 try
                 {
                     string dest = Path.Combine(backup, name);
