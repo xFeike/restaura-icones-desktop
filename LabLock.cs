@@ -53,7 +53,7 @@ namespace LabLock
         private CheckBox chkAutoStart;
         private Button btnSaveLayout;
         private Button btnRestoreNow;
-        private Button btnRemoveAll;
+        private Button btnDesinstalar;
         private bool reallyClosing;
         private Label lblStatus;
 
@@ -67,34 +67,15 @@ namespace LabLock
             MaximizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
             ShowInTaskbar = false;
-            ShowIcon = false;
+            ShowIcon = true;
+            Icon = SystemIcons.Shield;
             BackColor = Color.FromArgb(245, 245, 245);
 
             var boldFont = new Font("Segoe UI", 9, FontStyle.Bold);
             var normalFont = new Font("Segoe UI", 9);
 
             int y = 15;
-            var lbl1 = new Label
-            {
-                Text = "Protecoes",
-                Location = new Point(20, y),
-                Size = new Size(380, 18),
-                Font = boldFont
-            };
 
-            y += 22;
-            chkBlockScroll = new CheckBox
-            {
-                Text = "Bloquear Ctrl+Scroll na area de trabalho",
-                Location = new Point(20, y),
-                Size = new Size(380, 26),
-                Font = normalFont,
-                Checked = protector.BlockScroll
-            };
-            chkBlockScroll.CheckedChanged += (s, e) =>
-                protector.BlockScroll = chkBlockScroll.Checked;
-
-            y += 35;
             var lbl2 = new Label
             {
                 Text = "Layout dos Icones",
@@ -133,6 +114,28 @@ namespace LabLock
             btnRestoreNow.Click += BtnRestoreNow_Click;
 
             y += 36;
+
+            var lbl3 = new Label
+            {
+                Text = "Inicializacao",
+                Location = new Point(20, y),
+                Size = new Size(380, 18),
+                Font = boldFont
+            };
+
+            y += 22;
+            chkAutoStart = new CheckBox
+            {
+                Text = "Iniciar junto com o Windows",
+                Location = new Point(20, y),
+                Size = new Size(380, 26),
+                Font = normalFont,
+                Checked = protector.AutoStart
+            };
+            chkAutoStart.CheckedChanged += (s, e) =>
+                protector.AutoStart = chkAutoStart.Checked;
+
+            y += 30;
             chkAutoRestoreLayout = new CheckBox
             {
                 Text = "Restaurar layout salvo na inicializacao",
@@ -155,46 +158,47 @@ namespace LabLock
             };
 
             y += 30;
-            var lbl3 = new Label
+
+            var lbl1 = new Label
             {
-                Text = "Inicializacao",
+                Text = "Protecoes",
                 Location = new Point(20, y),
                 Size = new Size(380, 18),
                 Font = boldFont
             };
 
             y += 22;
-            chkAutoStart = new CheckBox
+            chkBlockScroll = new CheckBox
             {
-                Text = "Iniciar junto com o Windows",
+                Text = "Bloquear Ctrl+Scroll na area de trabalho",
                 Location = new Point(20, y),
                 Size = new Size(380, 26),
                 Font = normalFont,
-                Checked = protector.AutoStart
+                Checked = protector.BlockScroll
             };
-            chkAutoStart.CheckedChanged += (s, e) =>
-                protector.AutoStart = chkAutoStart.Checked;
+            chkBlockScroll.CheckedChanged += (s, e) =>
+                protector.BlockScroll = chkBlockScroll.Checked;
 
-            y += 35;
-            btnRemoveAll = new Button
+            btnDesinstalar = new Button
             {
-                Text = "Remover todas as alteracoes e sair",
-                Location = new Point(20, y),
-                Size = new Size(380, 30),
-                Font = new Font("Segoe UI", 9, FontStyle.Bold),
+                Text = "Desinstalar",
+                Location = new Point(ClientSize.Width - 110, ClientSize.Height - 40),
+                Size = new Size(90, 26),
+                Font = new Font("Segoe UI", 8),
+                FlatStyle = FlatStyle.Flat,
                 BackColor = Color.FromArgb(220, 53, 69),
                 ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat,
                 Cursor = Cursors.Hand
             };
-            btnRemoveAll.FlatAppearance.BorderSize = 0;
-            btnRemoveAll.Click += BtnRemoveAll_Click;
+            btnDesinstalar.FlatAppearance.BorderSize = 0;
+            btnDesinstalar.Click += BtnDesinstalar_Click;
+            btnDesinstalar.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
 
             Controls.AddRange(new Control[] {
+                lbl2, btnSaveLayout, btnRestoreNow,
+                lbl3, chkAutoStart, chkAutoRestoreLayout, lblStatus,
                 lbl1, chkBlockScroll,
-                lbl2, btnSaveLayout, btnRestoreNow, chkAutoRestoreLayout, lblStatus,
-                lbl3, chkAutoStart,
-                btnRemoveAll
+                btnDesinstalar
             });
 
             trayIcon = new NotifyIcon
@@ -238,8 +242,6 @@ namespace LabLock
                     protector.AutoRestoreLayout = true;
                 }
                 SetStatus("Layout salvo com sucesso!", false);
-                trayIcon.ShowBalloonTip(3000, "LabLock",
-                    "Layout dos icones salvo com sucesso.", ToolTipIcon.Info);
             }
             else
             {
@@ -257,8 +259,6 @@ namespace LabLock
             if (protector.RestoreLayout(true))
             {
                 SetStatus("Layout restaurado com sucesso!", false);
-                trayIcon.ShowBalloonTip(3000, "LabLock",
-                    "Layout dos icones restaurado.", ToolTipIcon.Info);
             }
             else
             {
@@ -266,7 +266,7 @@ namespace LabLock
             }
         }
 
-        private void BtnRemoveAll_Click(object sender, EventArgs e)
+        private void BtnDesinstalar_Click(object sender, EventArgs e)
         {
             var result = MessageBox.Show(
                 "Isso ira:\n" +
@@ -317,11 +317,19 @@ namespace LabLock
         {
             if (!reallyClosing)
             {
+                protector.SaveSettings();
                 e.Cancel = true;
                 Hide();
                 return;
             }
             base.OnFormClosing(e);
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            if (WindowState == FormWindowState.Minimized)
+                Hide();
+            base.OnResize(e);
         }
 
         protected override void Dispose(bool disposing)
@@ -548,6 +556,7 @@ namespace LabLock
                         key.SetValue("BlockScroll", blockScroll ? 1 : 0, RegistryValueKind.DWord);
                         key.SetValue("AutoRestoreLayout", autoRestoreLayout ? 1 : 0, RegistryValueKind.DWord);
                         key.SetValue("AutoStart", autoStart ? 1 : 0, RegistryValueKind.DWord);
+                        key.Flush();
                     }
                 }
             }
@@ -698,12 +707,9 @@ namespace LabLock
                             int nullPos = name.IndexOf('\0');
                             if (nullPos >= 0) name = name.Substring(0, nullPos);
 
-                            if (!string.IsNullOrEmpty(name))
-                            {
-                                string entry = name + "|" + pt.x + "|" + pt.y;
-                                key.SetValue("Icon_" + i.ToString("D4"), entry,
-                                    RegistryValueKind.String);
-                            }
+                            string entry = name + "|" + pt.x + "|" + pt.y;
+                            key.SetValue("Icon_" + i.ToString("D4"), entry,
+                                RegistryValueKind.String);
                         }
                     }
                 }
@@ -756,7 +762,8 @@ namespace LabLock
 
         private void RestorePositionsToListView()
         {
-            var savedPositions = new Dictionary<string, Point>();
+            var savedByName = new Dictionary<string, Point>();
+            var savedByIndex = new Dictionary<int, Point>();
             using (var key = Registry.CurrentUser.OpenSubKey(RegSavedLayout))
             {
                 if (key == null) return;
@@ -768,6 +775,7 @@ namespace LabLock
                     string val = key.GetValue(vn, "") as string;
                     if (string.IsNullOrEmpty(val)) continue;
 
+                    int si = int.Parse(vn.Substring(5));
                     string[] parts = val.Split('|');
                     if (parts.Length == 3)
                     {
@@ -775,13 +783,16 @@ namespace LabLock
                         if (int.TryParse(parts[1], out x)
                             && int.TryParse(parts[2], out y))
                         {
-                            savedPositions[parts[0]] = new Point(x, y);
+                            if (!string.IsNullOrEmpty(parts[0]))
+                                savedByName[parts[0]] = new Point(x, y);
+                            else
+                                savedByIndex[si] = new Point(x, y);
                         }
                     }
                 }
             }
 
-            if (savedPositions.Count == 0) return;
+            if (savedByName.Count == 0 && savedByIndex.Count == 0) return;
 
             IntPtr listView = FindDesktopListView();
             if (listView == IntPtr.Zero) return;
@@ -839,9 +850,16 @@ namespace LabLock
                         if (nullPos >= 0) name = name.Substring(0, nullPos);
 
                         if (!string.IsNullOrEmpty(name)
-                            && savedPositions.ContainsKey(name))
+                            && savedByName.ContainsKey(name))
                         {
-                            Point pos = savedPositions[name];
+                            Point pos = savedByName[name];
+                            int lp = (pos.Y << 16) | (pos.X & 0xFFFF);
+                            SendMessage(listView, LVM_SETITEMPOSITION,
+                                (IntPtr)i, (IntPtr)lp);
+                        }
+                        else if (savedByIndex.ContainsKey(i))
+                        {
+                            Point pos = savedByIndex[i];
                             int lp = (pos.Y << 16) | (pos.X & 0xFFFF);
                             SendMessage(listView, LVM_SETITEMPOSITION,
                                 (IntPtr)i, (IntPtr)lp);
