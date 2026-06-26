@@ -30,15 +30,17 @@ namespace LabLock
                 Application.SetCompatibleTextRenderingDefault(false);
 
                 using (var protector = new DesktopProtector())
-                using (var form = new SettingsForm(protector))
                 {
                     protector.LoadSettings();
 
                     if (protector.AutoRestoreLayout)
                         protector.RestoreLayout(false);
 
-                    form.ShowFromTray();
-                    Application.Run(form);
+                    using (var form = new SettingsForm(protector))
+                    {
+                        form.ShowFromTray();
+                        Application.Run(form);
+                    }
                 }
             }
         }
@@ -114,6 +116,19 @@ namespace LabLock
             btnRestoreNow.Click += BtnRestoreNow_Click;
 
             y += 36;
+            string lastSave = protector.GetLastSaveTime();
+            lblStatus = new Label
+            {
+                Text = !string.IsNullOrEmpty(lastSave)
+                    ? "Ultimo salvamento: " + lastSave
+                    : "Nenhum layout salvo ainda.",
+                Location = new Point(20, y),
+                Size = new Size(380, 18),
+                Font = new Font("Segoe UI", 8),
+                ForeColor = Color.Gray
+            };
+
+            y += 24;
 
             var lbl3 = new Label
             {
@@ -146,16 +161,6 @@ namespace LabLock
             };
             chkAutoRestoreLayout.CheckedChanged += (s, e) =>
                 protector.AutoRestoreLayout = chkAutoRestoreLayout.Checked;
-
-            y += 30;
-            lblStatus = new Label
-            {
-                Text = "Dica: o layout salvo e restaurado automaticamente ao ligar o PC.",
-                Location = new Point(20, y),
-                Size = new Size(380, 18),
-                Font = new Font("Segoe UI", 8),
-                ForeColor = Color.Gray
-            };
 
             y += 30;
 
@@ -247,6 +252,7 @@ namespace LabLock
             {
                 SetStatus("Erro ao salvar layout.", true);
             }
+            RefreshLastSaveTime();
         }
 
         private void BtnRestoreNow_Click(object sender, EventArgs e)
@@ -259,11 +265,21 @@ namespace LabLock
             if (protector.RestoreLayout(true))
             {
                 SetStatus("Layout restaurado com sucesso!", false);
+                RefreshLastSaveTime();
             }
             else
             {
                 SetStatus("Falha ao restaurar. Nenhum layout salvo?", true);
             }
+        }
+
+        private void RefreshLastSaveTime()
+        {
+            string lastSave = protector.GetLastSaveTime();
+            lblStatus.Text = !string.IsNullOrEmpty(lastSave)
+                ? "Ultimo salvamento: " + lastSave
+                : "Nenhum layout salvo ainda.";
+            lblStatus.ForeColor = Color.Gray;
         }
 
         private void BtnDesinstalar_Click(object sender, EventArgs e)
@@ -610,6 +626,14 @@ namespace LabLock
                 }
 
                 SavePositionsFromListView();
+
+                using (var dest = Registry.CurrentUser.CreateSubKey(RegSavedLayout))
+                {
+                    if (dest != null)
+                        dest.SetValue("LastSaveTime",
+                            DateTime.Now.ToString("dd/MM/yyyy HH:mm"),
+                            RegistryValueKind.String);
+                }
                 return true;
             }
             catch (Exception ex)
@@ -618,6 +642,19 @@ namespace LabLock
                     "Erro", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return false;
             }
+        }
+
+        public string GetLastSaveTime()
+        {
+            try
+            {
+                using (var key = Registry.CurrentUser.OpenSubKey(RegSavedLayout))
+                {
+                    if (key == null) return null;
+                    return key.GetValue("LastSaveTime", "") as string;
+                }
+            }
+            catch { return null; }
         }
 
         private void SavePositionsFromListView()
@@ -747,6 +784,7 @@ namespace LabLock
                 }
 
                 NotifyDesktopRefresh();
+                BackupNewDesktopItems();
                 RestorePositionsToListView();
 
                 return true;
@@ -757,6 +795,63 @@ namespace LabLock
                     MessageBox.Show("Erro ao restaurar layout: " + ex.Message,
                         "Erro", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return false;
+            }
+        }
+
+        private void BackupNewDesktopItems()
+        {
+            var savedNames = new HashSet<string>();
+            using (var key = Registry.CurrentUser.OpenSubKey(RegSavedLayout))
+            {
+                if (key == null) return;
+                string[] valueNames = key.GetValueNames();
+                foreach (string vn in valueNames)
+                {
+                    if (!vn.StartsWith("Icon_")) continue;
+                    string val = key.GetValue(vn, "") as string;
+                    if (string.IsNullOrEmpty(val)) continue;
+                    string[] parts = val.Split('|');
+                    if (parts.Length == 3 && !string.IsNullOrEmpty(parts[0]))
+                        savedNames.Add(parts[0]);
+                }
+            }
+            if (savedNames.Count == 0) return;
+
+            string desktop = Environment.GetFolderPath(
+                Environment.SpecialFolder.Desktop);
+            string backup = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                "backup");
+            try { Directory.CreateDirectory(backup); } catch { }
+
+            foreach (string f in Directory.GetFiles(desktop))
+            {
+                string name = Path.GetFileName(f);
+                string nameNoExt = Path.GetFileNameWithoutExtension(f);
+                if (savedNames.Contains(name) || savedNames.Contains(nameNoExt))
+                    continue;
+                try
+                {
+                    string dest = Path.Combine(backup, name);
+                    if (File.Exists(dest)) File.Delete(dest);
+                    File.Move(f, dest);
+                }
+                catch { }
+            }
+
+            foreach (string d in Directory.GetDirectories(desktop))
+            {
+                string name = Path.GetFileName(d);
+                if (name == "backup" || savedNames.Contains(name))
+                    continue;
+                try
+                {
+                    string dest = Path.Combine(backup, name);
+                    if (Directory.Exists(dest))
+                        Directory.Delete(dest, true);
+                    Directory.Move(d, dest);
+                }
+                catch { }
             }
         }
 
