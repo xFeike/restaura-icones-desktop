@@ -799,25 +799,60 @@ namespace LabLock
             }
         }
 
+        private static void Log(string msg)
+        {
+            try
+            {
+                File.AppendAllText(
+                    Environment.GetFolderPath(Environment.SpecialFolder.Desktop)
+                        + @"\lablock_debug.log",
+                    DateTime.Now.ToString("HH:mm:ss.fff") + " " + msg + "\r\n");
+            }
+            catch { }
+        }
+
         private void BackupNewDesktopItems()
         {
             var savedNames = new HashSet<string>(
                 StringComparer.InvariantCultureIgnoreCase);
             using (var key = Registry.CurrentUser.OpenSubKey(RegSavedLayout))
             {
-                if (key == null) return;
+                if (key == null)
+                {
+                    Log("BACKUP: RegSavedLayout key is null, returning.");
+                    return;
+                }
                 string[] vns = key.GetValueNames();
+                Log("BACKUP: found " + vns.Length + " value names in RegSavedLayout");
                 foreach (string vn in vns)
                 {
                     if (!vn.StartsWith("Icon_")) continue;
                     string val = key.GetValue(vn, "") as string;
-                    if (string.IsNullOrEmpty(val)) continue;
+                    if (string.IsNullOrEmpty(val))
+                    {
+                        Log("BACKUP: " + vn + " value is null/empty, skipping");
+                        continue;
+                    }
                     string[] parts = val.Split('|');
+                    Log("BACKUP: " + vn + " = \"" + val + "\" split into " + parts.Length + " parts");
                     if (parts.Length == 3 && !string.IsNullOrEmpty(parts[0]))
+                    {
                         savedNames.Add(parts[0].Trim());
+                        Log("BACKUP: saved name added: \"" + parts[0].Trim() + "\"");
+                    }
+                    else
+                    {
+                        Log("BACKUP: " + vn + " NOT added (parts.Length=" + parts.Length
+                            + ", name empty=" + string.IsNullOrEmpty(parts[0]) + ")");
+                    }
                 }
             }
-            if (savedNames.Count == 0) return;
+            Log("BACKUP: total savedNames count = " + savedNames.Count);
+            if (savedNames.Count == 0)
+            {
+                Log("BACKUP: savedNames empty, returning.");
+                return;
+            }
 
             string desktop = Environment.GetFolderPath(
                 Environment.SpecialFolder.Desktop);
@@ -826,36 +861,56 @@ namespace LabLock
                 "backup");
             try { Directory.CreateDirectory(backup); } catch { }
 
+            Log("BACKUP: scanning desktop: " + desktop);
+
             foreach (string f in Directory.GetFiles(desktop))
             {
                 FileAttributes attr = File.GetAttributes(f);
                 if ((attr & (FileAttributes.Hidden | FileAttributes.System)) != 0)
+                {
+                    Log("BACKUP: SKIP (hidden/sys) " + Path.GetFileName(f));
                     continue;
+                }
 
                 string name = Path.GetFileName(f);
                 string nameWithoutExt = Path.GetFileNameWithoutExtension(f);
 
-                if (savedNames.Contains(name) ||
-                    savedNames.Contains(nameWithoutExt))
-                    continue;
+                bool match = savedNames.Contains(name)
+                    || savedNames.Contains(nameWithoutExt);
+                Log("BACKUP: FILE \"" + name + "\" (noext=\"" + nameWithoutExt
+                    + "\") match=" + match);
+
+                if (match) continue;
 
                 try
                 {
                     string dest = Path.Combine(backup, name);
                     if (File.Exists(dest)) File.Delete(dest);
                     File.Move(f, dest);
+                    Log("BACKUP: MOVED to backup: " + name);
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    Log("BACKUP: FAILED to move " + name + ": " + ex.Message);
+                }
             }
 
             foreach (string d in Directory.GetDirectories(desktop))
             {
                 string name = Path.GetFileName(d);
                 if ((File.GetAttributes(d) & FileAttributes.Hidden) != 0)
+                {
+                    Log("BACKUP: SKIP (hidden) dir " + name);
                     continue;
+                }
                 if (name.Equals("backup", StringComparison.OrdinalIgnoreCase)
                     || savedNames.Contains(name))
+                {
+                    Log("BACKUP: SKIP dir \"" + name + "\" (is backup or saved)");
                     continue;
+                }
+
+                Log("BACKUP: DIR \"" + name + "\" will be moved");
 
                 try
                 {
@@ -863,9 +918,15 @@ namespace LabLock
                     if (Directory.Exists(dest))
                         Directory.Delete(dest, true);
                     Directory.Move(d, dest);
+                    Log("BACKUP: MOVED dir to backup: " + name);
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    Log("BACKUP: FAILED to move dir " + name + ": " + ex.Message);
+                }
             }
+
+            Log("BACKUP: finished.");
         }
 
         private void RestorePositionsToListView()
