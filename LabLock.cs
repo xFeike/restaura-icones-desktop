@@ -720,7 +720,7 @@ namespace LabLock
                         lvi.iItem = i;
                         lvi.iSubItem = 0;
                         lvi.pszText = remoteText;
-                        lvi.cchTextMax = 260;
+                        lvi.cchTextMax = (int)cbText;
 
                         byte[] structBuf = new byte[cbItem];
                         IntPtr structPtr = Marshal.AllocHGlobal((int)cbItem);
@@ -740,7 +740,7 @@ namespace LabLock
                         if (ReadProcessMemory(hProc, remoteText, textBuf, cbText, out read)
                             && read >= 2)
                         {
-                            string name = Encoding.Unicode.GetString(textBuf, 0, (int)read);
+                            string name = Encoding.Default.GetString(textBuf, 0, (int)read);
                             int nullPos = name.IndexOf('\0');
                             if (nullPos >= 0) name = name.Substring(0, nullPos);
 
@@ -748,6 +748,7 @@ namespace LabLock
                             key.SetValue("Icon_" + i.ToString("D4"), entry,
                                 RegistryValueKind.String);
                         }
+                        else Log("DBG: SaveSettings ReadProcessMemory failed len=" + cbText);
                     }
                 }
 
@@ -804,8 +805,7 @@ namespace LabLock
             try
             {
                 File.AppendAllText(
-                    Environment.GetFolderPath(Environment.SpecialFolder.Desktop)
-                        + @"\lablock_debug.log",
+                    Path.Combine(Path.GetTempPath(), "lablock_debug.log"),
                     DateTime.Now.ToString("HH:mm:ss.fff") + " " + msg + "\r\n");
             }
             catch { }
@@ -993,7 +993,7 @@ namespace LabLock
                     lvi.iItem = i;
                     lvi.iSubItem = 0;
                     lvi.pszText = remoteText;
-                    lvi.cchTextMax = 260;
+                    lvi.cchTextMax = (int)cbText;
 
                     byte[] structBuf = new byte[cbItem];
                     IntPtr structPtr = Marshal.AllocHGlobal((int)cbItem);
@@ -1014,7 +1014,7 @@ namespace LabLock
                     if (ReadProcessMemory(hProc, remoteText, textBuf, cbText, out read)
                         && read >= 2)
                     {
-                        string name = Encoding.Unicode.GetString(textBuf, 0, (int)read);
+                        string name = Encoding.Default.GetString(textBuf, 0, (int)read);
                         int nullPos = name.IndexOf('\0');
                         if (nullPos >= 0) name = name.Substring(0, nullPos);
 
