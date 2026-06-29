@@ -744,7 +744,7 @@ namespace LabLock
                             int nullPos = name.IndexOf('\0');
                             if (nullPos >= 0) name = name.Substring(0, nullPos);
 
-                            string entry = name + "|" + pt.x + "|" + pt.y;
+                            string entry = name.Trim() + "|" + pt.x + "|" + pt.y;
                             key.SetValue("Icon_" + i.ToString("D4"), entry,
                                 RegistryValueKind.String);
                         }
@@ -801,7 +801,8 @@ namespace LabLock
 
         private void BackupNewDesktopItems()
         {
-            var savedNames = new HashSet<string>();
+            var savedNames = new HashSet<string>(
+                StringComparer.InvariantCultureIgnoreCase);
             using (var key = Registry.CurrentUser.OpenSubKey(RegSavedLayout))
             {
                 if (key == null) return;
@@ -813,7 +814,7 @@ namespace LabLock
                     if (string.IsNullOrEmpty(val)) continue;
                     string[] parts = val.Split('|');
                     if (parts.Length == 3 && !string.IsNullOrEmpty(parts[0]))
-                        savedNames.Add(parts[0]);
+                        savedNames.Add(parts[0].Trim());
                 }
             }
             if (savedNames.Count == 0) return;
@@ -832,9 +833,10 @@ namespace LabLock
                     continue;
 
                 string name = Path.GetFileName(f);
-                string match = Path.GetFileNameWithoutExtension(f);
+                string nameWithoutExt = Path.GetFileNameWithoutExtension(f);
 
-                if (savedNames.Contains(name) || savedNames.Contains(match))
+                if (savedNames.Contains(name) ||
+                    savedNames.Contains(nameWithoutExt))
                     continue;
 
                 try
@@ -851,7 +853,8 @@ namespace LabLock
                 string name = Path.GetFileName(d);
                 if ((File.GetAttributes(d) & FileAttributes.Hidden) != 0)
                     continue;
-                if (name == "backup" || savedNames.Contains(name))
+                if (name.Equals("backup", StringComparison.OrdinalIgnoreCase)
+                    || savedNames.Contains(name))
                     continue;
 
                 try
