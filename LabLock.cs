@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Forms;
@@ -29,14 +30,14 @@ namespace LabLock
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
 
-                using (var protector = new DesktopProtector())
+                using (var p = new DesktopProtector())
                 {
-                    protector.LoadSettings();
+                    p.LoadSettings();
 
-                    if (protector.AutoRestoreLayout)
-                        protector.RestoreLayout(false);
+                    if (p.AutoRestoreLayout)
+                        p.RestoreLayout(false);
 
-                    using (var form = new SettingsForm(protector))
+                    using (var form = new SettingsForm(p))
                     {
                         form.ShowFromTray();
                         Application.Run(form);
@@ -48,23 +49,23 @@ namespace LabLock
 
     class SettingsForm : Form
     {
-        private DesktopProtector protector;
+        private DesktopProtector p;
         private NotifyIcon trayIcon;
-        private CheckBox chkBlockScroll;
-        private CheckBox chkAutoRestoreLayout;
+        private CheckBox chkAutoRestore;
         private CheckBox chkAutoStart;
-        private Button btnSaveLayout;
-        private Button btnRestoreNow;
+        private Button btnSave;
+        private Button btnRestore;
         private Button btnDesinstalar;
         private bool reallyClosing;
         private Label lblStatus;
+        private Label lblIconCount;
 
-        public SettingsForm(DesktopProtector protector)
+        public SettingsForm(DesktopProtector p)
         {
-            this.protector = protector;
+            this.p = p;
 
-            Text = "LabLock - Protecao da Area de Trabalho";
-            Size = new Size(440, 380);
+            Text = "LabLock - Gerenciamento do Laboratorio";
+            Size = new Size(440, 400);
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
@@ -80,16 +81,16 @@ namespace LabLock
 
             var lbl2 = new Label
             {
-                Text = "Layout dos Icones",
+                Text = "Layout dos Icones da Area de Trabalho",
                 Location = new Point(20, y),
                 Size = new Size(380, 18),
                 Font = boldFont
             };
 
             y += 22;
-            btnSaveLayout = new Button
+            btnSave = new Button
             {
-                Text = "Salvar layout atual dos icones",
+                Text = "Salvar layout atual",
                 Location = new Point(20, y),
                 Size = new Size(180, 30),
                 Font = normalFont,
@@ -98,12 +99,12 @@ namespace LabLock
                 ForeColor = Color.White,
                 Cursor = Cursors.Hand
             };
-            btnSaveLayout.FlatAppearance.BorderSize = 0;
-            btnSaveLayout.Click += BtnSaveLayout_Click;
+            btnSave.FlatAppearance.BorderSize = 0;
+            btnSave.Click += BtnSave_Click;
 
-            btnRestoreNow = new Button
+            btnRestore = new Button
             {
-                Text = "Restaurar layout agora",
+                Text = "Restaurar tudo agora",
                 Location = new Point(210, y),
                 Size = new Size(190, 30),
                 Font = normalFont,
@@ -112,16 +113,16 @@ namespace LabLock
                 ForeColor = Color.White,
                 Cursor = Cursors.Hand
             };
-            btnRestoreNow.FlatAppearance.BorderSize = 0;
-            btnRestoreNow.Click += BtnRestoreNow_Click;
+            btnRestore.FlatAppearance.BorderSize = 0;
+            btnRestore.Click += BtnRestore_Click;
 
             y += 36;
-            string lastSave = protector.GetLastSaveTime();
+            string last = p.GetLastSaveTime();
             lblStatus = new Label
             {
-                Text = !string.IsNullOrEmpty(lastSave)
-                    ? "Ultimo salvamento: " + lastSave
-                    : "Nenhum layout salvo ainda.",
+                Text = !string.IsNullOrEmpty(last)
+                    ? "Ultimo backup: " + last
+                    : "Nenhum backup salvo ainda.",
                 Location = new Point(20, y),
                 Size = new Size(380, 18),
                 Font = new Font("Segoe UI", 8),
@@ -145,22 +146,22 @@ namespace LabLock
                 Location = new Point(20, y),
                 Size = new Size(380, 26),
                 Font = normalFont,
-                Checked = protector.AutoStart
+                Checked = p.AutoStart
             };
             chkAutoStart.CheckedChanged += (s, e) =>
-                protector.AutoStart = chkAutoStart.Checked;
+                p.AutoStart = chkAutoStart.Checked;
 
             y += 30;
-            chkAutoRestoreLayout = new CheckBox
+            chkAutoRestore = new CheckBox
             {
-                Text = "Restaurar layout salvo na inicializacao",
+                Text = "Restaurar backup na inicializacao",
                 Location = new Point(20, y),
                 Size = new Size(380, 26),
                 Font = normalFont,
-                Checked = protector.AutoRestoreLayout
+                Checked = p.AutoRestoreLayout
             };
-            chkAutoRestoreLayout.CheckedChanged += (s, e) =>
-                protector.AutoRestoreLayout = chkAutoRestoreLayout.Checked;
+            chkAutoRestore.CheckedChanged += (s, e) =>
+                p.AutoRestoreLayout = chkAutoRestore.Checked;
 
             y += 30;
 
@@ -173,16 +174,45 @@ namespace LabLock
             };
 
             y += 22;
-            chkBlockScroll = new CheckBox
+            var chkBlock = new CheckBox
             {
                 Text = "Bloquear Ctrl+Scroll na area de trabalho",
                 Location = new Point(20, y),
                 Size = new Size(380, 26),
                 Font = normalFont,
-                Checked = protector.BlockScroll
+                Checked = p.BlockScroll
             };
-            chkBlockScroll.CheckedChanged += (s, e) =>
-                protector.BlockScroll = chkBlockScroll.Checked;
+            chkBlock.CheckedChanged += (s, e) =>
+                p.BlockScroll = chkBlock.Checked;
+
+            y += 30;
+            var btnOrder = new Button
+            {
+                Text = "Ordenar icones que serao restaurados...",
+                Location = new Point(20, y),
+                Size = new Size(380, 28),
+                Font = normalFont,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.FromArgb(108, 117, 125),
+                ForeColor = Color.White,
+                Cursor = Cursors.Hand,
+                TextAlign = ContentAlignment.MiddleCenter
+            };
+            btnOrder.FlatAppearance.BorderSize = 0;
+            btnOrder.Click += BtnOrder_Click;
+
+            y += 34;
+            lblIconCount = new Label
+            {
+                Text = "0 icones no backupdesktop",
+                Location = new Point(20, y),
+                Size = new Size(380, 16),
+                Font = new Font("Segoe UI", 8),
+                ForeColor = Color.Gray
+            };
+            RefreshIconCount();
+
+            y += 22;
 
             btnDesinstalar = new Button
             {
@@ -200,23 +230,23 @@ namespace LabLock
             btnDesinstalar.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
 
             Controls.AddRange(new Control[] {
-                lbl2, btnSaveLayout, btnRestoreNow,
-                lbl3, chkAutoStart, chkAutoRestoreLayout, lblStatus,
-                lbl1, chkBlockScroll,
+                lbl2, btnSave, btnRestore, lblStatus,
+                lbl3, chkAutoStart, chkAutoRestore,
+                lbl1, chkBlock, btnOrder, lblIconCount,
                 btnDesinstalar
             });
 
             trayIcon = new NotifyIcon
             {
                 Icon = SystemIcons.Shield,
-                Text = "LabLock - Protecao da Area de Trabalho",
+                Text = "LabLock - Gerenciamento do Laboratorio",
                 Visible = true
             };
             trayIcon.DoubleClick += (s, e) => ShowFromTray();
 
             var menu = new ContextMenuStrip();
             menu.Items.Add("Configuracoes", null, (s, e) => ShowFromTray());
-            menu.Items.Add("Restaurar layout agora", null, (s, e) => DoRestore());
+            menu.Items.Add("Restaurar tudo agora", null, (s, e) => DoRestore());
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("Sair", null, (s, e) => ExitApp(false));
             trayIcon.ContextMenuStrip = menu;
@@ -237,48 +267,158 @@ namespace LabLock
             lblStatus.ForeColor = isError ? Color.Red : Color.Gray;
         }
 
-        private void BtnSaveLayout_Click(object sender, EventArgs e)
+        private void BtnSave_Click(object sender, EventArgs e)
         {
-            if (protector.SaveLayout())
+            if (p.SaveLayout())
             {
-                if (!chkAutoRestoreLayout.Checked)
+                if (!chkAutoRestore.Checked)
                 {
-                    chkAutoRestoreLayout.Checked = true;
-                    protector.AutoRestoreLayout = true;
+                    chkAutoRestore.Checked = true;
+                    p.AutoRestoreLayout = true;
                 }
-                SetStatus("Layout salvo com sucesso!", false);
+                SetStatus("Backup salvo com sucesso!", false);
             }
             else
-            {
-                SetStatus("Erro ao salvar layout.", true);
-            }
+                SetStatus("Erro ao salvar backup.", true);
             RefreshLastSaveTime();
         }
 
-        private void BtnRestoreNow_Click(object sender, EventArgs e)
+        private void BtnRestore_Click(object sender, EventArgs e)
         {
             DoRestore();
         }
 
         private void DoRestore()
         {
-            if (protector.RestoreLayout(true, true))
+            if (p.RestoreLayout(true))
             {
-                SetStatus("Layout restaurado com sucesso!", false);
+                SetStatus("Sistema restaurado com sucesso!", false);
                 RefreshLastSaveTime();
             }
             else
+                SetStatus("Falha ao restaurar. Nenhum backup salvo?", true);
+        }
+
+        private void BtnOrder_Click(object sender, EventArgs e)
+        {
+            string[] icons = p.GetOrderedIcons();
+            if (icons.Length == 0)
             {
-                SetStatus("Falha ao restaurar. Nenhum layout salvo?", true);
+                MessageBox.Show("Nenhum icone encontrado em:\n" +
+                    p.GetBackupDir() + "\n\n" +
+                    "Coloque arquivos manualmente na pasta 'backupdesktop'.",
+                    "Ordenar icones", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
             }
+
+            using (var dlg = new Form())
+            {
+                dlg.Text = "Ordenar icones para restauracao";
+                dlg.Size = new Size(340, 420);
+                dlg.FormBorderStyle = FormBorderStyle.FixedDialog;
+                dlg.StartPosition = FormStartPosition.CenterParent;
+                dlg.MaximizeBox = false;
+                dlg.MinimizeBox = false;
+                dlg.ShowInTaskbar = false;
+                dlg.Icon = SystemIcons.Shield;
+
+                var lb = new ListBox
+                {
+                    Location = new Point(10, 10),
+                    Size = new Size(200, 340),
+                    SelectionMode = SelectionMode.One
+                };
+                foreach (string f in icons)
+                    lb.Items.Add(Path.GetFileName(f));
+                if (lb.Items.Count > 0) lb.SelectedIndex = 0;
+
+                var btnUp = new Button
+                {
+                    Text = "/\\",
+                    Location = new Point(220, 10),
+                    Size = new Size(40, 30)
+                };
+                btnUp.Click += (se, ev) =>
+                {
+                    int i = lb.SelectedIndex;
+                    if (i > 0)
+                    {
+                        object tmp = lb.Items[i];
+                        lb.Items[i] = lb.Items[i - 1];
+                        lb.Items[i - 1] = tmp;
+                        lb.SelectedIndex = i - 1;
+                    }
+                };
+
+                var btnDown = new Button
+                {
+                    Text = "\\/",
+                    Location = new Point(265, 10),
+                    Size = new Size(40, 30)
+                };
+                btnDown.Click += (se, ev) =>
+                {
+                    int i = lb.SelectedIndex;
+                    if (i >= 0 && i < lb.Items.Count - 1)
+                    {
+                        object tmp = lb.Items[i];
+                        lb.Items[i] = lb.Items[i + 1];
+                        lb.Items[i + 1] = tmp;
+                        lb.SelectedIndex = i + 1;
+                    }
+                };
+
+                var btnOk = new Button
+                {
+                    Text = "Salvar ordem",
+                    Location = new Point(10, 360),
+                    Size = new Size(100, 28)
+                };
+                btnOk.Click += (se, ev) =>
+                {
+                    var ordered = new List<string>();
+                    foreach (object item in lb.Items)
+                        ordered.Add((string)item);
+                    string backupDir = p.GetBackupDir();
+                    var fullPaths = new List<string>();
+                    foreach (string name in ordered)
+                        fullPaths.Add(Path.Combine(backupDir, name));
+                    p.SaveIconOrder(fullPaths.ToArray());
+                    RefreshIconCount();
+                    dlg.Close();
+                };
+
+                var btnCancel = new Button
+                {
+                    Text = "Cancelar",
+                    Location = new Point(120, 360),
+                    Size = new Size(100, 28)
+                };
+                btnCancel.Click += (se, ev) => dlg.Close();
+
+                dlg.Controls.AddRange(new Control[] {
+                    lb, btnUp, btnDown, btnOk, btnCancel
+                });
+
+                dlg.ShowDialog(this);
+            }
+        }
+
+        private void RefreshIconCount()
+        {
+            string[] icons = p.GetOrderedIcons();
+            string orderFile = Path.Combine(p.GetBackupDir(), ".order");
+            bool hasOrder = File.Exists(orderFile);
+            lblIconCount.Text = icons.Length + " icone(s) no backupdesktop"
+                + (hasOrder ? " (ordem personalizada)" : "");
         }
 
         private void RefreshLastSaveTime()
         {
-            string lastSave = protector.GetLastSaveTime();
-            lblStatus.Text = !string.IsNullOrEmpty(lastSave)
-                ? "Ultimo salvamento: " + lastSave
-                : "Nenhum layout salvo ainda.";
+            string last = p.GetLastSaveTime();
+            lblStatus.Text = !string.IsNullOrEmpty(last)
+                ? "Ultimo backup: " + last
+                : "Nenhum backup salvo ainda.";
             lblStatus.ForeColor = Color.Gray;
         }
 
@@ -287,17 +427,15 @@ namespace LabLock
             var result = MessageBox.Show(
                 "Isso ira:\n" +
                 "- Remover a inicializacao automatica\n" +
-                "- Remover a restauracao automatica do layout\n" +
-                "- Restaurar configuracoes originais do registro\n" +
+                "- Remover a restauracao automatica\n" +
                 "- Excluir este programa\n\n" +
                 "Tem certeza?",
-                "Remover todas as alteracoes",
+                "Desinstalar",
                 MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
 
-            if (result != DialogResult.Yes)
-                return;
+            if (result != DialogResult.Yes) return;
 
-            protector.RemoveAll();
+            p.RemoveAll();
 
             string exePath = Application.ExecutablePath;
             string batPath = Path.Combine(Path.GetTempPath(),
@@ -324,8 +462,7 @@ namespace LabLock
         {
             reallyClosing = true;
             trayIcon.Visible = false;
-            if (!skipSave)
-                protector.SaveSettings();
+            if (!skipSave) p.SaveSettings();
             Close();
         }
 
@@ -333,7 +470,7 @@ namespace LabLock
         {
             if (!reallyClosing)
             {
-                protector.SaveSettings();
+                p.SaveSettings();
                 e.Cancel = true;
                 Hide();
                 return;
@@ -366,22 +503,10 @@ namespace LabLock
         private const int WH_MOUSE_LL = 14;
         private const int WM_MOUSEWHEEL = 0x020A;
         private const int VK_CONTROL = 0x11;
-        private const int HWND_BROADCAST = 0xFFFF;
-        private const int WM_SETTINGCHANGE = 0x001A;
         private const uint GA_ROOT = 2;
 
-        private const int LVM_GETITEMCOUNT = 0x1004;
-        private const int LVM_GETITEMPOSITION = 0x1010;
-        private const int LVM_SETITEMPOSITION = 0x100F;
-        private const int LVM_GETITEMTEXT = 0x102D;
-
-        private const uint PROCESS_VM_OPERATION = 0x0008;
-        private const uint PROCESS_VM_READ = 0x0010;
-        private const uint PROCESS_VM_WRITE = 0x0020;
-        private const uint MEM_COMMIT = 0x1000;
-        private const uint MEM_RESERVE = 0x2000;
-        private const uint MEM_RELEASE = 0x8000;
-        private const uint PAGE_READWRITE = 0x04;
+        private const uint SHCNE_ASSOCCHANGED = 0x08000000;
+        private const uint SHCNF_IDLIST = 0x0000;
 
         [DllImport("user32.dll", CharSet = CharSet.Auto)]
         private static extern IntPtr SetWindowsHookEx(int idHook,
@@ -408,106 +533,54 @@ namespace LabLock
         [DllImport("user32.dll", CharSet = CharSet.Auto)]
         private static extern IntPtr GetAncestor(IntPtr hwnd, uint gaFlags);
 
-        [DllImport("user32.dll", CharSet = CharSet.Auto)]
-        private static extern IntPtr SendMessage(IntPtr hWnd, uint msg,
-            IntPtr wParam, IntPtr lParam);
-
-        [DllImport("user32.dll", CharSet = CharSet.Auto)]
-        private static extern IntPtr FindWindow(string lpClassName,
-            string lpWindowName);
-
-        [DllImport("user32.dll", CharSet = CharSet.Auto)]
-        private static extern IntPtr FindWindowEx(IntPtr hwndParent,
-            IntPtr hwndChildAfter, string lpszClass, string lpszWindow);
-
-        [DllImport("user32.dll")]
-        private static extern uint GetWindowThreadProcessId(IntPtr hWnd,
-            out uint lpdwProcessId);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        private static extern IntPtr OpenProcess(uint dwDesiredAccess,
-            bool bInheritHandle, uint dwProcessId);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool CloseHandle(IntPtr hObject);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        private static extern IntPtr VirtualAllocEx(IntPtr hProcess,
-            IntPtr lpAddress, uint dwSize, uint flAllocationType,
-            uint flProtect);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool VirtualFreeEx(IntPtr hProcess,
-            IntPtr lpAddress, uint dwSize, uint dwFreeType);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool ReadProcessMemory(IntPtr hProcess,
-            IntPtr lpBaseAddress, [Out] byte[] lpBuffer, uint nSize,
-            out uint lpNumberOfBytesRead);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool WriteProcessMemory(IntPtr hProcess,
-            IntPtr lpBaseAddress, byte[] lpBuffer, uint nSize,
-            out uint lpNumberOfBytesWritten);
-
         [DllImport("shell32.dll")]
         private static extern void SHChangeNotify(uint wEventId,
             uint uFlags, IntPtr dwItem1, IntPtr dwItem2);
 
         [StructLayout(LayoutKind.Sequential)]
-        private struct POINTAPI
+        private struct MSLLHOOKSTRUCT
         {
             public int x;
             public int y;
-        }
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct MSLLHOOKSTRUCT
-        {
-            public POINTAPI pt;
             public uint mouseData;
             public uint flags;
             public uint time;
             public IntPtr dwExtraInfo;
         }
 
-        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
-        private struct LVITEMW
-        {
-            public uint mask;
-            public int iItem;
-            public int iSubItem;
-            public uint state;
-            public uint stateMask;
-            public IntPtr pszText;
-            public int cchTextMax;
-            public int iImage;
-            public IntPtr lParam;
-            public int iIndent;
-            public int iGroupId;
-            public uint cColumns;
-            public IntPtr puColumns;
-            public IntPtr piColFmt;
-            public int iGroup;
-        }
-
-        private const uint LVIF_TEXT = 0x0001;
-
         private LowLevelMouseProc mouseProc;
         private IntPtr mouseHook;
 
         private const string RegSettings = @"Software\LabLock\Settings";
         private const string RegRun = @"Software\Microsoft\Windows\CurrentVersion\Run";
-        private const string RegBags = @"Software\Microsoft\Windows\Shell\Bags\1\Desktop";
-        private const string RegSavedLayout = @"Software\LabLock\SavedLayout";
 
         private bool blockScroll = true;
         private bool autoRestoreLayout = false;
         private bool autoStart = true;
+
+        private string Desktop
+        {
+            get { return Environment.GetFolderPath(Environment.SpecialFolder.Desktop); }
+        }
+
+        private string Documents
+        {
+            get { return Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments); }
+        }
+
+        private string BackupDir
+        {
+            get
+            {
+                string exeDir = Path.GetDirectoryName(Application.ExecutablePath);
+                return Path.Combine(exeDir, "backupdesktop");
+            }
+        }
+
+        private string UserBackupDir
+        {
+            get { return Path.Combine(Documents, "Backup"); }
+        }
 
         public bool BlockScroll
         {
@@ -605,50 +678,11 @@ namespace LabLock
             }
         }
 
-        public bool SaveLayout()
-        {
-            try
-            {
-                using (var source = Registry.CurrentUser.OpenSubKey(RegBags))
-                {
-                    if (source == null)
-                    {
-                        MessageBox.Show("Nao foi possivel ler o layout do registro.",
-                            "Erro", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                        return false;
-                    }
-
-                    Registry.CurrentUser.DeleteSubKeyTree(RegSavedLayout, false);
-                    using (var dest = Registry.CurrentUser.CreateSubKey(RegSavedLayout))
-                    {
-                        CopyKey(source, dest);
-                    }
-                }
-
-                SavePositionsFromListView();
-
-                using (var dest = Registry.CurrentUser.CreateSubKey(RegSavedLayout))
-                {
-                    if (dest != null)
-                        dest.SetValue("LastSaveTime",
-                            DateTime.Now.ToString("dd/MM/yyyy HH:mm"),
-                            RegistryValueKind.String);
-                }
-                return true;
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Erro ao salvar layout: " + ex.Message,
-                    "Erro", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return false;
-            }
-        }
-
         public string GetLastSaveTime()
         {
             try
             {
-                using (var key = Registry.CurrentUser.OpenSubKey(RegSavedLayout))
+                using (var key = Registry.CurrentUser.OpenSubKey(RegSettings))
                 {
                     if (key == null) return null;
                     return key.GetValue("LastSaveTime", "") as string;
@@ -657,459 +691,277 @@ namespace LabLock
             catch { return null; }
         }
 
-        private void SavePositionsFromListView()
+        public bool SaveLayout()
         {
-            IntPtr listView = FindDesktopListView();
-            if (listView == IntPtr.Zero) return;
-
-            uint pid;
-            GetWindowThreadProcessId(listView, out pid);
-            IntPtr hProc = OpenProcess(
-                PROCESS_VM_OPERATION | PROCESS_VM_READ | PROCESS_VM_WRITE, false, pid);
-            if (hProc == IntPtr.Zero) return;
-
             try
             {
-                int count = (int)SendMessage(listView, LVM_GETITEMCOUNT,
-                    IntPtr.Zero, IntPtr.Zero);
-                if (count <= 0 || count > 500) return;
+                Directory.CreateDirectory(UserBackupDir);
 
-                uint cbPt = (uint)Marshal.SizeOf(typeof(POINTAPI));
-                uint cbItem = (uint)Marshal.SizeOf(typeof(LVITEMW));
-                uint cbText = 520;
+                BackupFolderToFlat(Desktop, UserBackupDir, "backupdesktop");
 
-                IntPtr remotePt = VirtualAllocEx(hProc, IntPtr.Zero,
-                    cbPt, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-                IntPtr remoteItem = VirtualAllocEx(hProc, IntPtr.Zero,
-                    cbItem + cbText, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-                if (remotePt == IntPtr.Zero || remoteItem == IntPtr.Zero)
+                string downloads = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                    "Downloads");
+                if (Directory.Exists(downloads))
+                    BackupFolderToFlat(downloads, UserBackupDir, null);
+
+                string pics = Environment.GetFolderPath(
+                    Environment.SpecialFolder.MyPictures);
+                if (Directory.Exists(pics))
+                    BackupFolderToFlat(pics, UserBackupDir, null);
+
+                string music = Environment.GetFolderPath(
+                    Environment.SpecialFolder.MyMusic);
+                if (Directory.Exists(music))
+                    BackupFolderToFlat(music, UserBackupDir, null);
+
+                string videos = Environment.GetFolderPath(
+                    Environment.SpecialFolder.MyVideos);
+                if (Directory.Exists(videos))
+                    BackupFolderToFlat(videos, UserBackupDir, null);
+
+                CopyFilesFlatRecursive(Documents, UserBackupDir, "Backup");
+
+                using (var key = Registry.CurrentUser.CreateSubKey(RegSettings))
                 {
-                    if (remotePt != IntPtr.Zero)
-                        VirtualFreeEx(hProc, remotePt, 0, MEM_RELEASE);
-                    if (remoteItem != IntPtr.Zero)
-                        VirtualFreeEx(hProc, remoteItem, 0, MEM_RELEASE);
-                    return;
-                }
-
-                IntPtr remoteText = new IntPtr(remoteItem.ToInt64() + cbItem);
-
-                using (var key = Registry.CurrentUser.CreateSubKey(RegSavedLayout))
-                {
-                    for (int i = 0; i < count; i++)
+                    if (key != null)
                     {
-                        SendMessage(listView, LVM_GETITEMPOSITION,
-                            (IntPtr)i, remotePt);
-
-                        byte[] bufPt = new byte[cbPt];
-                        uint read;
-                        if (!ReadProcessMemory(hProc, remotePt, bufPt, cbPt, out read)
-                            || read != cbPt)
-                            continue;
-
-                        POINTAPI pt;
-                        GCHandle hPt = GCHandle.Alloc(bufPt, GCHandleType.Pinned);
-                        try
-                        {
-                            pt = (POINTAPI)Marshal.PtrToStructure(
-                                hPt.AddrOfPinnedObject(), typeof(POINTAPI));
-                        }
-                        finally { hPt.Free(); }
-
-                        LVITEMW lvi = new LVITEMW();
-                        lvi.mask = LVIF_TEXT;
-                        lvi.iItem = i;
-                        lvi.iSubItem = 0;
-                        lvi.pszText = remoteText;
-                        lvi.cchTextMax = (int)cbText;
-
-                        byte[] structBuf = new byte[cbItem];
-                        IntPtr structPtr = Marshal.AllocHGlobal((int)cbItem);
-                        try
-                        {
-                            Marshal.StructureToPtr(lvi, structPtr, false);
-                            Marshal.Copy(structPtr, structBuf, 0, (int)cbItem);
-                        }
-                        finally { Marshal.FreeHGlobal(structPtr); }
-
-                        uint written;
-                        WriteProcessMemory(hProc, remoteItem, structBuf, cbItem, out written);
-
-                        SendMessage(listView, LVM_GETITEMTEXT, (IntPtr)i, remoteItem);
-
-                        byte[] textBuf = new byte[cbText];
-                        if (ReadProcessMemory(hProc, remoteText, textBuf, cbText, out read)
-                            && read >= 2)
-                        {
-                            string name = Encoding.Default.GetString(textBuf, 0, (int)read);
-                            int nullPos = name.IndexOf('\0');
-                            if (nullPos >= 0) name = name.Substring(0, nullPos);
-
-                            string entry = name.Trim() + "|" + pt.x + "|" + pt.y;
-                            key.SetValue("Icon_" + i.ToString("D4"), entry,
-                                RegistryValueKind.String);
-                        }
-                        else Log("DBG: SaveSettings ReadProcessMemory failed len=" + cbText);
+                        key.SetValue("LastSaveTime",
+                            DateTime.Now.ToString("dd/MM/yyyy HH:mm"),
+                            RegistryValueKind.String);
+                        key.Flush();
                     }
                 }
 
-                VirtualFreeEx(hProc, remotePt, 0, MEM_RELEASE);
-                VirtualFreeEx(hProc, remoteItem, 0, MEM_RELEASE);
+                return true;
             }
-            finally
+            catch (Exception ex)
             {
-                CloseHandle(hProc);
+                MessageBox.Show("Erro ao salvar backup: " + ex.Message,
+                    "Erro", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return false;
             }
         }
 
-        public bool RestoreLayout(bool showFeedback, bool doBackup = false)
+        private static void BackupFolderToFlat(string src, string dst, string exclude)
+        {
+            foreach (string f in Directory.GetFiles(src))
+            {
+                string name = Path.GetFileName(f);
+                if (exclude == null || !string.Equals(name, exclude, StringComparison.OrdinalIgnoreCase))
+                    SafeCopyFile(f, Path.Combine(dst, name));
+            }
+        }
+
+        private static void CopyFilesFlatRecursive(string src, string dst, string exclude)
+        {
+            foreach (string f in Directory.GetFiles(src))
+            {
+                string name = Path.GetFileName(f);
+                if (!string.Equals(name, exclude, StringComparison.OrdinalIgnoreCase))
+                    SafeCopyFile(f, Path.Combine(dst, name));
+            }
+            foreach (string d in Directory.GetDirectories(src))
+            {
+                string name = Path.GetFileName(d);
+                if (!string.Equals(name, exclude, StringComparison.OrdinalIgnoreCase))
+                {
+                    try { CopyFilesFlatRecursive(d, dst, exclude); }
+                    catch { }
+                }
+            }
+        }
+
+        private static void SafeCopyFile(string src, string dst)
         {
             try
             {
-                using (var saveKey = Registry.CurrentUser.OpenSubKey(RegSavedLayout))
-                {
-                    if (saveKey == null)
-                    {
-                        if (showFeedback)
-                            MessageBox.Show("Nenhum layout salvo encontrado.\n" +
-                                "Use 'Salvar layout atual' primeiro.",
-                                "Layout nao encontrado",
-                                MessageBoxButtons.OK, MessageBoxIcon.Information);
-                        return false;
-                    }
+                if ((File.GetAttributes(src) & FileAttributes.Directory) == 0)
+                    File.Copy(src, dst, true);
+            }
+            catch { }
+        }
 
-                    using (var dest = Registry.CurrentUser.CreateSubKey(RegBags))
-                    {
-                        ClearKey(dest);
-                        CopyKey(saveKey, dest);
-                    }
+        public bool RestoreLayout(bool showFeedback)
+        {
+            try
+            {
+                if (!Directory.Exists(BackupDir))
+                {
+                    if (showFeedback)
+                        MessageBox.Show("Nenhum backup encontrado em:\n" +
+                            BackupDir + "\n\n" +
+                            "Coloque os icones manualmente na pasta 'backupdesktop' " +
+                            "ao lado do executavel e tente novamente.",
+                            "Backup nao encontrado",
+                            MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return false;
                 }
 
-                NotifyDesktopRefresh();
-                if (doBackup)
-                    BackupNewDesktopItems();
-                RestorePositionsToListView();
+                SaveLayout();
+
+                WipeFolder(
+                    Environment.GetFolderPath(Environment.SpecialFolder.Desktop));
+                WipeFolder(
+                    Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                        "Downloads"));
+                WipeFolder(Environment.GetFolderPath(
+                    Environment.SpecialFolder.MyPictures));
+                WipeFolder(Environment.GetFolderPath(
+                    Environment.SpecialFolder.MyMusic));
+                WipeFolder(Environment.GetFolderPath(
+                    Environment.SpecialFolder.MyVideos));
+                WipeFolderPreserving(Documents, new[] { "Backup" });
+
+                string[] ordered = GetOrderedIcons();
+            foreach (string f in ordered)
+            {
+                string dest = Path.Combine(Desktop, Path.GetFileName(f));
+                File.Copy(f, dest, true);
+            }
+
+                PurgeBackupExecutables(UserBackupDir);
+
+                SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, IntPtr.Zero, IntPtr.Zero);
 
                 return true;
             }
             catch (Exception ex)
             {
                 if (showFeedback)
-                    MessageBox.Show("Erro ao restaurar layout: " + ex.Message,
+                    MessageBox.Show("Erro ao restaurar: " + ex.Message,
                         "Erro", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return false;
             }
         }
 
-        private static void Log(string msg)
+        private static readonly string[] BlockedExts = {
+            ".lnk", ".exe", ".msi", ".ps1", ".bat" };
+
+        private static void PurgeBackupExecutables(string path)
+        {
+            if (!Directory.Exists(path)) return;
+
+            foreach (string f in Directory.GetFiles(path))
+            {
+                string ext = Path.GetExtension(f);
+                foreach (string b in BlockedExts)
+                {
+                    if (string.Equals(ext, b, StringComparison.OrdinalIgnoreCase))
+                    {
+                        TryDeleteFile(f);
+                        break;
+                    }
+                }
+            }
+            foreach (string d in Directory.GetDirectories(path))
+            {
+                try { PurgeBackupExecutables(d); }
+                catch { }
+            }
+        }
+
+        private static void WipeFolder(string path)
+        {
+            if (!Directory.Exists(path)) return;
+
+            foreach (string f in Directory.GetFiles(path))
+                TryDeleteFile(f);
+            foreach (string d in Directory.GetDirectories(path))
+                TryDeleteDir(d);
+        }
+
+        private static void WipeFolderPreserving(string path, string[] preserve)
+        {
+            if (!Directory.Exists(path)) return;
+
+            foreach (string f in Directory.GetFiles(path))
+            {
+                string name = Path.GetFileName(f);
+                if (!IsPreserved(name, preserve))
+                    TryDeleteFile(f);
+            }
+            foreach (string d in Directory.GetDirectories(path))
+            {
+                string name = Path.GetFileName(d);
+                if (!IsPreserved(name, preserve))
+                    TryDeleteDir(d);
+            }
+        }
+
+        private static bool IsPreserved(string name, string[] preserve)
+        {
+            foreach (string p in preserve)
+                if (string.Equals(name, p, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            return false;
+        }
+
+        private static void TryDeleteFile(string path)
         {
             try
             {
-                File.AppendAllText(
-                    Path.Combine(Path.GetTempPath(), "lablock_debug.log"),
-                    DateTime.Now.ToString("HH:mm:ss.fff") + " " + msg + "\r\n");
+                File.SetAttributes(path, FileAttributes.Normal);
+                File.Delete(path);
             }
             catch { }
         }
 
-        private void BackupNewDesktopItems()
+        private static void TryDeleteDir(string path)
         {
-            var savedNames = new HashSet<string>(
-                StringComparer.InvariantCultureIgnoreCase);
-            using (var key = Registry.CurrentUser.OpenSubKey(RegSavedLayout))
-            {
-                if (key == null)
-                {
-                    Log("BACKUP: RegSavedLayout key is null, returning.");
-                    return;
-                }
-                string[] vns = key.GetValueNames();
-                Log("BACKUP: found " + vns.Length + " value names in RegSavedLayout");
-                foreach (string vn in vns)
-                {
-                    if (!vn.StartsWith("Icon_")) continue;
-                    string val = key.GetValue(vn, "") as string;
-                    if (string.IsNullOrEmpty(val))
-                    {
-                        Log("BACKUP: " + vn + " value is null/empty, skipping");
-                        continue;
-                    }
-                    string[] parts = val.Split('|');
-                    Log("BACKUP: " + vn + " = \"" + val + "\" split into " + parts.Length + " parts");
-                    if (parts.Length == 3 && !string.IsNullOrEmpty(parts[0]))
-                    {
-                        savedNames.Add(parts[0].Trim());
-                        Log("BACKUP: saved name added: \"" + parts[0].Trim() + "\"");
-                    }
-                    else
-                    {
-                        Log("BACKUP: " + vn + " NOT added (parts.Length=" + parts.Length
-                            + ", name empty=" + string.IsNullOrEmpty(parts[0]) + ")");
-                    }
-                }
-            }
-            Log("BACKUP: total savedNames count = " + savedNames.Count);
-            if (savedNames.Count == 0)
-            {
-                Log("BACKUP: savedNames empty, returning.");
-                return;
-            }
-
-            string desktop = Environment.GetFolderPath(
-                Environment.SpecialFolder.Desktop);
-            string backup = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                "backup");
-            try { Directory.CreateDirectory(backup); } catch { }
-
-            Log("BACKUP: scanning desktop: " + desktop);
-
-            foreach (string f in Directory.GetFiles(desktop))
-            {
-                FileAttributes attr = File.GetAttributes(f);
-                if ((attr & (FileAttributes.Hidden | FileAttributes.System)) != 0)
-                {
-                    Log("BACKUP: SKIP (hidden/sys) " + Path.GetFileName(f));
-                    continue;
-                }
-
-                string name = Path.GetFileName(f);
-                string nameWithoutExt = Path.GetFileNameWithoutExtension(f);
-
-                bool match = savedNames.Contains(name)
-                    || savedNames.Contains(nameWithoutExt);
-                Log("BACKUP: FILE \"" + name + "\" (noext=\"" + nameWithoutExt
-                    + "\") match=" + match);
-
-                if (match) continue;
-
-                try
-                {
-                    string dest = Path.Combine(backup, name);
-                    if (File.Exists(dest)) File.Delete(dest);
-                    File.Move(f, dest);
-                    Log("BACKUP: MOVED to backup: " + name);
-                }
-                catch (Exception ex)
-                {
-                    Log("BACKUP: FAILED to move " + name + ": " + ex.Message);
-                }
-            }
-
-            foreach (string d in Directory.GetDirectories(desktop))
-            {
-                string name = Path.GetFileName(d);
-                if ((File.GetAttributes(d) & FileAttributes.Hidden) != 0)
-                {
-                    Log("BACKUP: SKIP (hidden) dir " + name);
-                    continue;
-                }
-                if (name.Equals("backup", StringComparison.OrdinalIgnoreCase)
-                    || savedNames.Contains(name))
-                {
-                    Log("BACKUP: SKIP dir \"" + name + "\" (is backup or saved)");
-                    continue;
-                }
-
-                Log("BACKUP: DIR \"" + name + "\" will be moved");
-
-                try
-                {
-                    string dest = Path.Combine(backup, name);
-                    if (Directory.Exists(dest))
-                        Directory.Delete(dest, true);
-                    Directory.Move(d, dest);
-                    Log("BACKUP: MOVED dir to backup: " + name);
-                }
-                catch (Exception ex)
-                {
-                    Log("BACKUP: FAILED to move dir " + name + ": " + ex.Message);
-                }
-            }
-
-            Log("BACKUP: finished.");
-        }
-
-        private void RestorePositionsToListView()
-        {
-            var savedByName = new Dictionary<string, Point>();
-            var savedByIndex = new Dictionary<int, Point>();
-            using (var key = Registry.CurrentUser.OpenSubKey(RegSavedLayout))
-            {
-                if (key == null) return;
-
-                string[] valueNames = key.GetValueNames();
-                foreach (string vn in valueNames)
-                {
-                    if (!vn.StartsWith("Icon_")) continue;
-                    string val = key.GetValue(vn, "") as string;
-                    if (string.IsNullOrEmpty(val)) continue;
-
-                    int si = int.Parse(vn.Substring(5));
-                    string[] parts = val.Split('|');
-                    if (parts.Length == 3)
-                    {
-                        int x, y;
-                        if (int.TryParse(parts[1], out x)
-                            && int.TryParse(parts[2], out y))
-                        {
-                            if (!string.IsNullOrEmpty(parts[0]))
-                                savedByName[parts[0]] = new Point(x, y);
-                            else
-                                savedByIndex[si] = new Point(x, y);
-                        }
-                    }
-                }
-            }
-
-            if (savedByName.Count == 0 && savedByIndex.Count == 0) return;
-
-            IntPtr listView = FindDesktopListView();
-            if (listView == IntPtr.Zero) return;
-
-            uint pid;
-            GetWindowThreadProcessId(listView, out pid);
-            IntPtr hProc = OpenProcess(
-                PROCESS_VM_OPERATION | PROCESS_VM_READ | PROCESS_VM_WRITE, false, pid);
-            if (hProc == IntPtr.Zero) return;
-
             try
             {
-                int count = (int)SendMessage(listView, LVM_GETITEMCOUNT,
-                    IntPtr.Zero, IntPtr.Zero);
-                if (count <= 0 || count > 500) return;
-
-                uint cbItem = (uint)Marshal.SizeOf(typeof(LVITEMW));
-                uint cbText = 520;
-
-                IntPtr remoteItem = VirtualAllocEx(hProc, IntPtr.Zero,
-                    cbItem + cbText, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-                if (remoteItem == IntPtr.Zero) return;
-                IntPtr remoteText = new IntPtr(remoteItem.ToInt64() + cbItem);
-
-                for (int i = 0; i < count; i++)
-                {
-                    LVITEMW lvi = new LVITEMW();
-                    lvi.mask = LVIF_TEXT;
-                    lvi.iItem = i;
-                    lvi.iSubItem = 0;
-                    lvi.pszText = remoteText;
-                    lvi.cchTextMax = (int)cbText;
-
-                    byte[] structBuf = new byte[cbItem];
-                    IntPtr structPtr = Marshal.AllocHGlobal((int)cbItem);
-                    try
-                    {
-                        Marshal.StructureToPtr(lvi, structPtr, false);
-                        Marshal.Copy(structPtr, structBuf, 0, (int)cbItem);
-                    }
-                    finally { Marshal.FreeHGlobal(structPtr); }
-
-                    uint written;
-                    WriteProcessMemory(hProc, remoteItem, structBuf, cbItem, out written);
-
-                    SendMessage(listView, LVM_GETITEMTEXT, (IntPtr)i, remoteItem);
-
-                    byte[] textBuf = new byte[cbText];
-                    uint read;
-                    if (ReadProcessMemory(hProc, remoteText, textBuf, cbText, out read)
-                        && read >= 2)
-                    {
-                        string name = Encoding.Default.GetString(textBuf, 0, (int)read);
-                        int nullPos = name.IndexOf('\0');
-                        if (nullPos >= 0) name = name.Substring(0, nullPos);
-
-                        if (!string.IsNullOrEmpty(name)
-                            && savedByName.ContainsKey(name))
-                        {
-                            Point pos = savedByName[name];
-                            int lp = (pos.Y << 16) | (pos.X & 0xFFFF);
-                            SendMessage(listView, LVM_SETITEMPOSITION,
-                                (IntPtr)i, (IntPtr)lp);
-                        }
-                        else if (savedByIndex.ContainsKey(i))
-                        {
-                            Point pos = savedByIndex[i];
-                            int lp = (pos.Y << 16) | (pos.X & 0xFFFF);
-                            SendMessage(listView, LVM_SETITEMPOSITION,
-                                (IntPtr)i, (IntPtr)lp);
-                        }
-                    }
-                }
-
-                VirtualFreeEx(hProc, remoteItem, 0, MEM_RELEASE);
+                WipeFolder(path);
+                Directory.Delete(path, false);
             }
-            finally
-            {
-                CloseHandle(hProc);
-            }
+            catch { }
         }
 
-        private static IntPtr FindDesktopListView()
+        public string GetBackupDir()
         {
-            IntPtr progman = FindWindow("Progman", null);
-            if (progman != IntPtr.Zero)
-            {
-                IntPtr lv = FindWindowEx(progman, IntPtr.Zero, "SysListView32", null);
-                if (lv == IntPtr.Zero)
-                {
-                    IntPtr defView = FindWindowEx(progman, IntPtr.Zero,
-                        "SHELLDLL_DefView", null);
-                    if (defView != IntPtr.Zero)
-                        lv = FindWindowEx(defView, IntPtr.Zero, "SysListView32", null);
-                }
-                if (lv != IntPtr.Zero) return lv;
-            }
-
-            IntPtr workerW = IntPtr.Zero;
-            while (true)
-            {
-                workerW = FindWindowEx(IntPtr.Zero, workerW, "WorkerW", null);
-                if (workerW == IntPtr.Zero) break;
-
-                IntPtr dv = FindWindowEx(workerW, IntPtr.Zero, "SHELLDLL_DefView", null);
-                if (dv != IntPtr.Zero)
-                {
-                    IntPtr lv2 = FindWindowEx(dv, IntPtr.Zero, "SysListView32", null);
-                    if (lv2 != IntPtr.Zero) return lv2;
-                }
-            }
-            return IntPtr.Zero;
+            return BackupDir;
         }
 
-        private static void ClearKey(RegistryKey key)
+        public string[] GetOrderedIcons()
         {
-            foreach (string name in key.GetValueNames())
-                key.DeleteValue(name);
-            foreach (string name in key.GetSubKeyNames())
-                key.DeleteSubKeyTree(name);
-        }
+            if (!Directory.Exists(BackupDir)) return new string[0];
 
-        private static void CopyKey(RegistryKey source, RegistryKey dest)
-        {
-            foreach (string valueName in source.GetValueNames())
+            string[] files = Directory.GetFiles(BackupDir);
+            string orderFile = Path.Combine(BackupDir, ".order");
+
+            if (File.Exists(orderFile))
             {
-                dest.SetValue(valueName, source.GetValue(valueName),
-                    source.GetValueKind(valueName));
-            }
-            foreach (string subKeyName in source.GetSubKeyNames())
-            {
-                using (var srcSub = source.OpenSubKey(subKeyName))
-                using (var dstSub = dest.CreateSubKey(subKeyName))
+                var order = new List<string>();
+                foreach (string line in File.ReadAllLines(orderFile))
                 {
-                    CopyKey(srcSub, dstSub);
+                    string name = line.Trim();
+                    if (string.IsNullOrEmpty(name)) continue;
+                    string full = Path.Combine(BackupDir, name);
+                    if (File.Exists(full))
+                        order.Add(full);
                 }
+                foreach (string f in files)
+                {
+                    string name = Path.GetFileName(f);
+                    if (name.StartsWith(".")) continue;
+                    if (!order.Contains(f))
+                        order.Add(f);
+                }
+                return order.ToArray();
             }
+
+            return files;
         }
 
-        private static void NotifyDesktopRefresh()
+        public void SaveIconOrder(string[] orderedFiles)
         {
-            SHChangeNotify(0x08000000, 0x0000, IntPtr.Zero, IntPtr.Zero);
-            SendMessage((IntPtr)HWND_BROADCAST, WM_SETTINGCHANGE,
-                IntPtr.Zero, IntPtr.Zero);
-
-            IntPtr progman = FindWindow("Progman", null);
-            if (progman != IntPtr.Zero)
-                SendMessage(progman, 0x052C, IntPtr.Zero, IntPtr.Zero);
+            if (!Directory.Exists(BackupDir)) return;
+            string orderFile = Path.Combine(BackupDir, ".order");
+            var lines = new List<string>();
+            foreach (string f in orderedFiles)
+                lines.Add(Path.GetFileName(f));
+            File.WriteAllLines(orderFile, lines);
         }
 
         public void RemoveAll()
@@ -1122,8 +974,13 @@ namespace LabLock
                 mouseHook = IntPtr.Zero;
             }
 
-            try { Registry.CurrentUser.DeleteSubKeyTree(RegSavedLayout, false); } catch { }
             try { Registry.CurrentUser.DeleteSubKeyTree(RegSettings, false); } catch { }
+            try
+            {
+                if (Directory.Exists(BackupDir))
+                    Directory.Delete(BackupDir, true);
+            }
+            catch { }
         }
 
         private void SetAutoStart(bool enable)
@@ -1149,7 +1006,7 @@ namespace LabLock
             MSLLHOOKSTRUCT data = (MSLLHOOKSTRUCT)
                 Marshal.PtrToStructure(lParam, typeof(MSLLHOOKSTRUCT));
 
-            IntPtr hwnd = WindowFromPoint(data.pt.x, data.pt.y);
+            IntPtr hwnd = WindowFromPoint(data.x, data.y);
             if (hwnd == IntPtr.Zero) return false;
 
             IntPtr root = GetAncestor(hwnd, GA_ROOT);
